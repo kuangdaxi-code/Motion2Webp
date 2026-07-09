@@ -714,7 +714,7 @@ document.getElementById('themeToggle').addEventListener('click', () => {
 import { FFmpeg } from 'https://esm.sh/@ffmpeg/ffmpeg@0.12.10';
 import { fetchFile, toBlobURL } from 'https://esm.sh/@ffmpeg/util@0.12.1';
 
-const CORE_BASE = 'https://esm.sh/@ffmpeg/core@0.12.6/dist/esm';
+const CORE_BASE = '/vendor/ffmpeg-core';
 let _ffmpeg = null;
 let _ffmpegLoading = null;
 let _currentJobProgressCb = null;
@@ -728,12 +728,14 @@ async function getFFmpeg(onLoadProgress){
     ff.on('progress', ({ progress }) => {
       if (_currentJobProgressCb) _currentJobProgressCb(Math.max(0, Math.min(1, progress)));
     });
-    if (onLoadProgress) onLoadProgress(0.05, '正在下载 WebAssembly 引擎…');
+    if (onLoadProgress) onLoadProgress(0.05, '正在加载 WebAssembly 引擎…');
     const coreURL = await toBlobURL(`${CORE_BASE}/ffmpeg-core.js`, 'text/javascript');
-    if (onLoadProgress) onLoadProgress(0.35, '正在下载 WebAssembly 引擎…');
+    if (onLoadProgress) onLoadProgress(0.25, '正在加载 WebAssembly 引擎…');
     const wasmURL = await toBlobURL(`${CORE_BASE}/ffmpeg-core.wasm`, 'application/wasm');
-    if (onLoadProgress) onLoadProgress(0.85, '正在初始化引擎…');
-    await ff.load({ coreURL, wasmURL });
+    if (onLoadProgress) onLoadProgress(0.75, '正在加载 WebAssembly 引擎…');
+    const workerURL = await toBlobURL(`${CORE_BASE}/ffmpeg-core.worker.js`, 'text/javascript');
+    if (onLoadProgress) onLoadProgress(0.9, '正在初始化引擎…');
+    await ff.load({ coreURL, wasmURL, workerURL });
     if (onLoadProgress) onLoadProgress(1, '引擎就绪');
     _ffmpeg = ff;
     return ff;

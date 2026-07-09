@@ -23,7 +23,19 @@ const upload = multer({
   limits: { fileSize: 2 * 1024 * 1024 * 1024 } // 2GB per file
 });
 
-app.use(express.static(path.join(__dirname, 'public')));
+app.use((req, res, next) => {
+  // Required for SharedArrayBuffer (ffmpeg.wasm multi-thread)
+  res.setHeader('Cross-Origin-Opener-Policy', 'same-origin');
+  res.setHeader('Cross-Origin-Embedder-Policy', 'require-corp');
+  res.setHeader('Cross-Origin-Resource-Policy', 'same-origin');
+  next();
+});
+
+app.use(express.static(path.join(__dirname, 'public'), {
+  setHeaders(res, filePath) {
+    if (filePath.endsWith('.wasm')) res.setHeader('Content-Type', 'application/wasm');
+  }
+}));
 app.use(express.json());
 
 function sanitizeName(name) {
