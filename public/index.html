@@ -689,7 +689,8 @@
     <button class="close" id="toastClose" title="关闭">✕</button>
   </div>
 
-<script>
+<script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+<script type="module">
 // ============ Theme ============
 (function(){
   try {
@@ -708,6 +709,102 @@ document.getElementById('themeToggle').addEventListener('click', () => {
   document.documentElement.setAttribute('data-theme', next);
   try { localStorage.setItem('m2w-theme', next); } catch(e){}
 });
+
+// ============ ffmpeg.wasm (browser-side) ============
+import { FFmpeg } from 'https://esm.sh/@ffmpeg/ffmpeg@0.12.10';
+import { fetchFile, toBlobURL } from 'https://esm.sh/@ffmpeg/util@0.12.1';
+
+const CORE_BASE = 'https://esm.sh/@ffmpeg/core@0.12.6/dist/esm';
+let _ffmpeg = null;
+let _ffmpegLoading = null;
+let _currentJobProgressCb = null;
+
+async function getFFmpeg(onLoadProgress){
+  if (_ffmpeg) return _ffmpeg;
+  if (_ffmpegLoading) return _ffmpegLoading;
+  _ffmpegLoading = (async () => {
+    const ff = new FFmpeg();
+    ff.on('log', ({ message }) => { /* console.log('[ffmpeg]', message); */ });
+    ff.on('progress', ({ progress }) => {
+      if (_currentJobProgressCb) _currentJobProgressCb(Math.max(0, Math.min(1, progress)));
+    });
+    if (onLoadProgress) onLoadProgress(0.05, '正在下载 WebAssembly 引擎…');
+    const coreURL = await toBlobURL(`${CORE_BASE}/ffmpeg-core.js`, 'text/javascript');
+    if (onLoadProgress) onLoadProgress(0.35, '正在下载 WebAssembly 引擎…');
+    const wasmURL = await toBlobURL(`${CORE_BASE}/ffmpeg-core.wasm`, 'application/wasm');
+    if (onLoadProgress) onLoadProgress(0.85, '正在初始化引擎…');
+    await ff.load({ coreURL, wasmURL });
+    if (onLoadProgress) onLoadProgress(1, '引擎就绪');
+    _ffmpeg = ff;
+    return ff;
+  })();
+  return _ffmpegLoading;
+}
+
+async function resetFFmpeg(){
+  try { if (_ffmpeg) _ffmpeg.terminate(); } catch(e){}
+  _ffmpeg = null;
+  _ffmpegLoading = null;
+  _currentJobProgressCb = null;
+}
+
+// Multi-pass encode until size <= 100MB (mirrors server logic, browser-side)
+const MAX_SIZE = 100 * 1024 * 1024;
+async function convertToWebp(ff, file, baseOpts, onProgress, isCanceled){
+  const inName = 'in_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
+  const ext = (file.name.split('.').pop() || 'bin').toLowerCase();
+  const inPath = `${inName}.${ext}`;
+  const outPath = `${inName}.webp`;
+  await ff.writeFile(inPath, await fetchFile(file));
+
+  const passes = [];
+  passes.push({ fps: baseOpts.fps, quality: baseOpts.quality, resize: baseOpts.resize });
+  // fallback ladders if too large
+  passes.push({ fps: Math.max(15, Math.min(baseOpts.fps, 20)), quality: Math.max(50, baseOpts.quality - 15), resize: baseOpts.resize });
+  passes.push({ fps: 15, quality: 45, resize: baseOpts.resize ? Math.min(baseOpts.resize, 960) : 960 });
+  passes.push({ fps: 12, quality: 35, resize: 720 });
+
+  let outData = null;
+  let lastAttempt = null;
+  for (let i = 0; i < passes.length; i++) {
+    if (isCanceled()) throw new Error('canceled');
+    const p = passes[i];
+    lastAttempt = p;
+    const args = ['-y', '-i', inPath];
+    const vf = [];
+    vf.push(`fps=${p.fps}`);
+    if (p.resize) vf.push(`scale=${p.resize}:-2:flags=lanczos`);
+    args.push('-vf', vf.join(','));
+    args.push('-vcodec', 'libwebp');
+    args.push('-lossless', baseOpts.lossless ? '1' : '0');
+    args.push('-compression_level', '4');
+    args.push('-q:v', String(p.quality));
+    args.push('-loop', '0');
+    args.push('-preset', 'default');
+    args.push('-an');
+    args.push('-vsync', '0');
+    args.push(outPath);
+
+    _currentJobProgressCb = (pr) => onProgress(pr, i, passes.length);
+    try {
+      await ff.exec(args);
+    } finally {
+      _currentJobProgressCb = null;
+    }
+    try {
+      outData = await ff.readFile(outPath);
+    } catch(e){
+      outData = null;
+    }
+    try { await ff.deleteFile(outPath); } catch(e){}
+    if (!outData) throw new Error('编码失败');
+    if (outData.byteLength <= MAX_SIZE) break;
+    if (i === passes.length - 1) break;
+  }
+
+  try { await ff.deleteFile(inPath); } catch(e){}
+  return { data: outData, attempt: lastAttempt };
+}
 
 // ============ Elements ============
 const drop = document.getElementById('drop');
@@ -810,45 +907,181 @@ function triggerDownload(url){
   document.body.appendChild(a); a.click();
   setTimeout(() => a.remove(), 1000);
 }
+function triggerDownloadNamed(url, name){
+  const a = document.createElement('a');
+  a.href = url; a.download = name || ''; a.style.display = 'none';
+  document.body.appendChild(a); a.click();
+  setTimeout(() => a.remove(), 1000);
+}
 
-// ============ Upload ============
+// ============ Expand ZIP inputs (browser-side) ============
+async function expandFiles(fileList){
+  const out = [];
+  for (const f of fileList) {
+    const isZip = /\.zip$/i.test(f.name) || f.type === 'application/zip' || f.type === 'application/x-zip-compressed';
+    if (isZip && window.JSZip) {
+      try {
+        const zip = await JSZip.loadAsync(f);
+        const entries = Object.values(zip.files).filter(e => !e.dir);
+        for (const e of entries) {
+          if (!/\.(mp4|mov|m4v|webm|mkv|avi|gif)$/i.test(e.name)) continue;
+          const blob = await e.async('blob');
+          out.push(new File([blob], e.name.split('/').pop(), { type: blob.type || 'video/mp4' }));
+        }
+      } catch(err){
+        console.warn('ZIP 解析失败', err);
+      }
+    } else {
+      out.push(f);
+    }
+  }
+  return out;
+}
+
+// ============ Convert (browser-side) ============
 let batchCounter = 0;
-async function uploadFiles(files){
-  if (!files || !files.length) return;
+const _blobUrls = new Map(); // key: `${jobId}|${outName}` -> objectURL
+
+async function uploadFiles(rawFiles){
+  if (!rawFiles || !rawFiles.length) return;
   batchCounter++;
   const batchNo = batchCounter;
+  const jobId = 'job_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6);
 
-  const form = new FormData();
-  for (const f of files) form.append('files', f);
-  if (rushMode) {
-    form.append('fps', '25');
-    form.append('quality', '70');
-    form.append('lossless', 'false');
-  } else {
-    form.append('fps', document.getElementById('fps').value || '30');
-    form.append('quality', document.getElementById('quality').value || '80');
-    const rz = document.getElementById('resize').value;
-    if (rz) form.append('resize', rz);
-    form.append('lossless', document.getElementById('lossless').value);
-  }
+  const files = await expandFiles(Array.from(rawFiles));
+  if (!files.length) return;
+
+  const opts = rushMode ? {
+    fps: 25, quality: 70, lossless: false, resize: undefined
+  } : {
+    fps: parseInt(document.getElementById('fps').value, 10) || 30,
+    quality: parseInt(document.getElementById('quality').value, 10) || 80,
+    resize: parseInt(document.getElementById('resize').value, 10) || undefined,
+    lossless: document.getElementById('lossless').value === 'true',
+  };
   const modeLabel = rushMode ? '急速' : '标准';
 
   const card = createTaskCard(batchNo, files.length, modeLabel);
+  card.dataset.jobId = jobId;
   updateEmpty();
 
+  const state = {
+    id: jobId,
+    total: files.length,
+    done: 0,
+    failed: 0,
+    status: 'running',
+    startedAt: Date.now(),
+    current: '',
+    currentProgress: 0,
+    items: files.map(f => ({ name: f.name, outName: f.name.replace(/\.[^.]+$/, '') + '.webp', size: 0, status: 'pending', progress: 0 })),
+  };
+  card._state = state;
+  card._canceled = false;
+
+  // Ensure ffmpeg is loaded (show progress on card)
   try {
-    const res = await fetch('/api/convert', { method: 'POST', body: form });
-    if (!res.ok) throw new Error('上传失败 HTTP ' + res.status);
-    const data = await res.json();
-    card.dataset.jobId = data.jobId;
-    card.querySelector('.task-title').textContent = `批次 #${batchNo}`;
-    card.querySelector('.task-sub').textContent = `${modeLabel} · ${data.total} 个文件`;
-    startPolling(card, data.jobId);
-  } catch (e) {
-    card.querySelector('.task-title').textContent = `批次 #${batchNo} · 上传失败`;
-    card.querySelector('.task-sub').textContent = e.message;
+    if (!_ffmpeg) {
+      state.current = '加载 WebAssembly 引擎（约 30MB，仅首次）';
+      renderTask(card, snapshot(state));
+      await getFFmpeg((p, msg) => {
+        state.current = msg + ' ' + Math.round(p * 100) + '%';
+        state.currentProgress = p * 0.02; // 引擎加载算 2% 的整体进度感
+        renderTask(card, snapshot(state));
+      });
+    }
+  } catch(e) {
+    state.status = 'error';
+    state.current = '引擎加载失败：' + e.message;
+    renderTask(card, snapshot(state));
     card.dataset.status = 'done';
+    return;
   }
+
+  const ff = _ffmpeg;
+
+  for (let i = 0; i < files.length; i++) {
+    if (card._canceled) break;
+    const f = files[i];
+    const item = state.items[i];
+    item.status = 'running';
+    state.current = f.name;
+    state.currentProgress = 0;
+
+    try {
+      const { data } = await convertToWebp(ff, f, opts,
+        (progress) => {
+          item.progress = progress;
+          state.currentProgress = progress;
+          renderTask(card, snapshot(state));
+        },
+        () => card._canceled
+      );
+      if (card._canceled) throw new Error('canceled');
+
+      const blob = new Blob([data.buffer], { type: 'image/webp' });
+      const url = URL.createObjectURL(blob);
+      _blobUrls.set(jobId + '|' + item.outName, url);
+      item.status = 'done';
+      item.size = blob.size;
+      item.progress = 1;
+      state.done++;
+    } catch(err) {
+      if (err && err.message === 'canceled') {
+        item.status = 'failed';
+        // reset engine (terminated state)
+        await resetFFmpeg();
+      } else {
+        console.warn('convert failed', f.name, err);
+        item.status = 'failed';
+        state.failed++;
+        state.done++;
+      }
+    }
+    state.elapsed = (Date.now() - state.startedAt) / 1000;
+    // rough ETA
+    const per = state.done > 0 ? state.elapsed / state.done : 0;
+    state.eta = per > 0 ? per * (state.total - state.done) : 0;
+    renderTask(card, snapshot(state));
+  }
+
+  state.status = card._canceled ? 'error' : 'done';
+  state.currentProgress = 0;
+  state.current = card._canceled ? '已取消' : '完成';
+  state.elapsed = (Date.now() - state.startedAt) / 1000;
+  state.eta = 0;
+  renderTask(card, snapshot(state));
+  card.dataset.status = 'done';
+}
+
+function snapshot(s){
+  // shallow clone for render
+  return {
+    id: s.id, total: s.total, done: s.done, failed: s.failed,
+    status: s.status, elapsed: s.elapsed || (Date.now() - s.startedAt)/1000,
+    eta: s.eta, current: s.current, currentProgress: s.currentProgress || 0,
+    items: s.items.map(x => ({ ...x })),
+  };
+}
+
+async function downloadZip(card){
+  const s = card._state; if (!s) return;
+  const zip = new JSZip();
+  let count = 0;
+  for (const it of s.items) {
+    if (it.status !== 'done') continue;
+    const url = _blobUrls.get(s.id + '|' + it.outName);
+    if (!url) continue;
+    const blob = await (await fetch(url)).blob();
+    zip.file(it.outName, blob);
+    count++;
+  }
+  if (!count) return;
+  const out = await zip.generateAsync({ type: 'blob' });
+  const zipName = `motion2webp_batch_${s.id}.zip`;
+  const url = URL.createObjectURL(out);
+  triggerDownloadNamed(url, zipName);
+  setTimeout(() => URL.revokeObjectURL(url), 60000);
 }
 
 function createTaskCard(batchNo, count, modeLabel){
@@ -866,6 +1099,7 @@ function createTaskCard(batchNo, count, modeLabel){
       </div>
       <div class="task-actions">
         <button class="btn small secondary dl-all" style="display:none;">下载 ZIP</button>
+        <button class="btn small text cancel">取消</button>
         <button class="btn small text remove">移除</button>
       </div>
     </div>
@@ -880,25 +1114,15 @@ function createTaskCard(batchNo, count, modeLabel){
   `;
   jobsEl.prepend(card);
   card.querySelector('.remove').addEventListener('click', () => { card.remove(); updateEmpty(); });
+  card.querySelector('.cancel').addEventListener('click', () => {
+    card._canceled = true;
+    card.querySelector('.cancel').style.display = 'none';
+  });
+  card.querySelector('.dl-all').addEventListener('click', () => downloadZip(card));
   return card;
 }
 
-function startPolling(card, jobId){
-  const dlBtn = card.querySelector('.dl-all');
-  dlBtn.addEventListener('click', () => window.location = `/api/download-all/${jobId}`);
-  const timer = setInterval(async () => {
-    try {
-      const res = await fetch(`/api/status/${jobId}`);
-      if (!res.ok) return;
-      const s = await res.json();
-      renderTask(card, s);
-      if (s.status === 'done' || s.status === 'error') {
-        clearInterval(timer);
-        card.dataset.status = 'done';
-      }
-    } catch(e) {}
-  }, 500);
-}
+function startPolling(){ /* no-op: browser-side conversion is synchronous per-file */ }
 
 function renderTask(card, s){
   card._lastStatus = s;
@@ -920,10 +1144,12 @@ function renderTask(card, s){
     if (it.status === 'done') {
       if (!card._recentTracked.has(it.outName)) {
         card._recentTracked.add(it.outName);
-        addRecent({ jobId: s.id, name: it.name, outName: it.outName, size: it.size, ts: Date.now() });
+        const url = _blobUrls.get(s.id + '|' + it.outName);
+        addRecent({ jobId: s.id, name: it.name, outName: it.outName, size: it.size, ts: Date.now(), url });
       }
       status = `<span class="file-status done">${fmtSize(it.size)}</span>`;
-      right = `<a class="file-dl" href="/api/download/${s.id}/${encodeURIComponent(it.outName)}" download>下载</a>`;
+      const url = _blobUrls.get(s.id + '|' + it.outName) || '#';
+      right = `<a class="file-dl" href="${url}" download="${escapeHtml(it.outName)}">下载</a>`;
     } else if (it.status === 'failed') {
       status = `<span class="file-status failed">失败</span>`;
     } else if (it.status === 'running') {
@@ -944,7 +1170,8 @@ function renderTask(card, s){
     const it = items[0];
     if (it && it.status === 'done' && !card._autoDownloaded.has(it.outName)) {
       card._autoDownloaded.add(it.outName);
-      triggerDownload(`/api/download/${s.id}/${encodeURIComponent(it.outName)}`);
+      const url = _blobUrls.get(s.id + '|' + it.outName);
+      if (url) triggerDownloadNamed(url, it.outName);
       playChime();
       showAutoTip(card, `已自动下载：${it.outName}`);
     }
@@ -952,7 +1179,7 @@ function renderTask(card, s){
     const successCount = items.filter(i => i.status === 'done').length;
     if (successCount > 0) {
       card._zipDownloaded = true;
-      triggerDownload(`/api/download-all/${s.id}`);
+      downloadZip(card);
       playChime();
       showAutoTip(card, `已自动下载：${successCount} 个文件已打包`);
     }
@@ -1036,12 +1263,14 @@ function renderRecent(){
   for (const r of displayList) {
     const div = document.createElement('div');
     div.className = 'recent-card';
+    const dlHref = r.url || '#';
+    const dlAttr = r.url ? `href="${r.url}" download="${escapeHtml(r.outName)}"` : `href="#" onclick="return false" style="opacity:.4"`;
     div.innerHTML = `
       <div class="recent-info">
         <div class="recent-name" title="${escapeHtml(r.outName)}">${escapeHtml(r.outName)}</div>
         <div class="recent-meta">${fmtSize(r.size)} · ${fmtTs(r.ts)}</div>
       </div>
-      <a class="rdl" href="/api/download/${r.jobId}/${encodeURIComponent(r.outName)}" download>下载</a>
+      <a class="rdl" ${dlAttr}>下载</a>
     `;
     recentList.appendChild(div);
   }
