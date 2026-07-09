@@ -1,0 +1,10 @@
+node_modules/
+uploads/
+outputs/
+tmp/
+*.log
+.DS_Store
+.env
+.env.local
+.vscode/
+.idea/

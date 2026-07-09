@@ -1,0 +1,1096 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Motion2WebP</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;320;330;340;400;480;540;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    /* Figma-style palette */
+    --primary: #000000;
+    --on-primary: #ffffff;
+    --ink: #000000;
+    --ink-2: #1d1d1f;
+    --ink-dim: #6e6e73;
+    --canvas: #ffffff;
+    --inverse-canvas: #000000;
+    --inverse-ink: #ffffff;
+    --hairline: #e6e6e6;
+    --hairline-soft: #f1f1f1;
+    --surface-soft: #f5f5f5;
+    --block-blue: #dbeefc;
+    --block-blue-hover: #cee6f8;
+    --block-lime: #dceeb1;
+    --block-lilac: #c5b0f4;
+    --block-cream: #f4ecd6;
+    --block-pink: #efd4d4;
+    --block-mint: #c8e6cd;
+    --block-coral: #f3c9b6;
+    --block-navy: #1f1d3d;
+    --accent-magenta: #ff3d8b;
+    --success: #1ea64a;
+
+    /* Radii */
+    --r-xs: 2px;
+    --r-sm: 6px;
+    --r-md: 8px;
+    --r-lg: 20px;
+    --r-xl: 32px;
+    --r-pill: 50px;
+    --r-full: 9999px;
+
+    /* Spacing */
+    --sp-xxs: 4px;
+    --sp-xs: 8px;
+    --sp-sm: 12px;
+    --sp-md: 16px;
+    --sp-lg: 24px;
+    --sp-xl: 32px;
+    --sp-xxl: 48px;
+    --sp-section: 96px;
+
+    --ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+  html[data-theme="dark"] {
+    --primary: #ffffff;
+    --on-primary: #000000;
+    --ink: #f5f5f7;
+    --ink-2: #f5f5f7;
+    --ink-dim: #98989d;
+    --canvas: #121212;
+    --inverse-canvas: #ffffff;
+    --inverse-ink: #000000;
+    --hairline: #333333;
+    --hairline-soft: #222222;
+    --surface-soft: #1e1e1e;
+    --block-blue: #1a2a3c;
+    --block-blue-hover: #22344a;
+    --block-lime: #2a3a18;
+    --block-mint: #1a3622;
+    --success: #30d158;
+  }
+  @media (prefers-color-scheme: dark) {
+    html:not([data-theme="light"]) {
+      --primary: #ffffff;
+      --on-primary: #000000;
+      --ink: #f5f5f7;
+      --ink-2: #f5f5f7;
+      --ink-dim: #98989d;
+      --canvas: #121212;
+      --inverse-canvas: #ffffff;
+      --inverse-ink: #000000;
+      --hairline: #333333;
+      --hairline-soft: #222222;
+      --surface-soft: #1e1e1e;
+      --block-blue: #1a2a3c;
+      --block-blue-hover: #22344a;
+      --block-lime: #2a3a18;
+      --block-mint: #1a3622;
+      --success: #30d158;
+    }
+  }
+
+  * { box-sizing: border-box; -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    background-color: var(--canvas);
+    background-image: radial-gradient(var(--dot-color, #ececec) 1px, transparent 1px),
+                      radial-gradient(var(--dot-color, #ececec) 1px, transparent 1px);
+    background-size: 24px 24px;
+    background-position: 0 0, 12px 12px;
+    color: var(--ink-2);
+    font-family: "SF Pro Display", -apple-system, BlinkMacSystemFont, "PingFang SC", "Inter", system-ui, sans-serif;
+    font-size: 14px; font-weight: 400; line-height: 1.5;
+    letter-spacing: -0.005em;
+    font-feature-settings: "kern" 1;
+  }
+  html[data-theme="dark"] body { --dot-color: #262626; }
+  @media (prefers-color-scheme: dark) {
+    html:not([data-theme="light"]) body { --dot-color: #262626; }
+  }
+
+  .mono {
+    font-family: "JetBrains Mono", "SF Mono", Menlo, monospace;
+    text-transform: uppercase; letter-spacing: 0.54px; font-weight: 400;
+  }
+
+  /* ================== Nav ================== */
+  .nav {
+    position: sticky; top: 0; z-index: 50;
+    background: var(--primary);
+    color: var(--on-primary);
+    height: 56px;
+  }
+  .nav-inner {
+    max-width: 1280px; margin: 0 auto;
+    padding: 0 32px;
+    display: flex; align-items: center; justify-content: space-between;
+    height: 100%;
+  }
+  .brand { display: flex; align-items: center; gap: 10px; }
+  .brand-mark {
+    width: 26px; height: 26px; background: var(--on-primary); color: var(--primary);
+    border-radius: 6px;
+    display: inline-flex; align-items: center; justify-content: center;
+    font-weight: 700; font-size: 14px;
+  }
+  .brand-name {
+    font-size: 15px; font-weight: 600; letter-spacing: -0.008em;
+    color: var(--on-primary);
+  }
+  .nav-actions { display: flex; align-items: center; gap: 8px; }
+  .icon-btn {
+    background: rgba(255,255,255,0.1); color: var(--on-primary);
+    width: 40px; height: 40px; border-radius: var(--r-full);
+    border: 0; cursor: pointer;
+    display: inline-flex; align-items: center; justify-content: center;
+    transition: background-color .18s var(--ease);
+  }
+  .icon-btn:hover { background: rgba(255,255,255,0.2); }
+  .icon-btn svg { width: 18px; height: 18px; }
+  .icon-btn .ico-sun, .icon-btn .ico-moon { display: none; }
+  html[data-theme="light"] .icon-btn .ico-moon { display: inline; }
+  html[data-theme="dark"] .icon-btn .ico-sun { display: inline; }
+  @media (prefers-color-scheme: dark) {
+    html:not([data-theme="light"]) .icon-btn .ico-sun { display: inline; }
+    html:not([data-theme="light"]) .icon-btn .ico-moon { display: none; }
+  }
+  @media (prefers-color-scheme: light) {
+    html:not([data-theme="dark"]) .icon-btn .ico-moon { display: inline; }
+    html:not([data-theme="dark"]) .icon-btn .ico-sun { display: none; }
+  }
+
+  /* ================== Buttons ================== */
+  .btn {
+    display: inline-flex; align-items: center; justify-content: center;
+    gap: 8px;
+    height: 40px; padding: 0 24px;
+    border-radius: var(--r-pill);
+    font-family: inherit;
+    font-size: 14px; font-weight: 600; line-height: 1.4; letter-spacing: -0.005em;
+    border: 0; cursor: pointer;
+    transition: background-color .18s var(--ease), color .18s var(--ease),
+                transform .18s var(--ease);
+  }
+  .btn.primary { background: var(--primary); color: var(--on-primary); }
+  .btn.primary:hover { background: #1a1a1a; }
+  .btn.primary:active { transform: scale(0.98); }
+  .btn.secondary {
+    background: var(--canvas); color: var(--ink-2);
+    padding: 0 24px;
+    border: 1px solid var(--hairline);
+  }
+  .btn.secondary:hover { background: var(--surface-soft); }
+  .btn.magenta {
+    background: var(--accent-magenta); color: var(--on-primary);
+    padding: 10px 18px;
+  }
+  .btn.magenta:hover { filter: brightness(1.05); }
+  .btn.text {
+    background: transparent; color: var(--ink-2);
+    height: 40px; padding: 8px 12px;
+    font-size: 13px; font-weight: 500;
+    border-radius: var(--r-full);
+  }
+  .btn.text:hover { background: var(--surface-soft); }
+  .btn.small {
+    height: 30px; padding: 0 14px; font-size: 13px; font-weight: 500;
+  }
+  .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  /* ================== Layout ================== */
+  .container {
+    max-width: 1080px; margin: 0 auto;
+    padding: 0 32px 48px;
+  }
+
+  /* ================== Hero ================== */
+  .hero {
+    padding: 40px 0 28px;
+    max-width: 1080px;
+    text-align: left;
+    margin: 0 auto;
+  }
+  .eyebrow { display: none; }
+  .hero h1 {
+    font-family: "SF Pro Display", -apple-system, BlinkMacSystemFont, "PingFang SC", "Inter", system-ui, sans-serif;
+    font-size: 32px; font-weight: 700; line-height: 1.1; letter-spacing: -0.028em;
+    margin: 0 0 10px; color: var(--ink-2);
+  }
+  .hero .sub {
+    font-size: 14px; font-weight: 400; line-height: 1.55; letter-spacing: -0.005em;
+    color: var(--ink-dim); max-width: 720px; margin: 0;
+  }
+
+  /* ================== Section ================== */
+  .section { margin-top: 40px; }
+  .section-head {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 14px;
+    gap: 16px; flex-wrap: wrap;
+  }
+  .section-head h2 {
+    font-size: 15px; font-weight: 600; line-height: 1.35; letter-spacing: -0.008em;
+    margin: 0; color: var(--ink-2);
+  }
+  .section-head .head-note {
+    font-family: inherit; text-transform: none;
+    font-size: 13px; font-weight: 400; letter-spacing: -0.005em;
+    color: var(--ink-dim);
+  }
+  .section-head .head-actions { display: flex; align-items: center; gap: 16px; }
+  .section-link {
+    background: transparent; border: 0; padding: 4px 2px;
+    font-family: inherit; font-size: 13px; font-weight: 400; letter-spacing: -0.005em;
+    color: #0071e3; cursor: pointer; border-radius: var(--r-full);
+    transition: color .18s var(--ease);
+    text-decoration: none;
+  }
+  .section-link:hover { background: transparent; color: #0077ed; }
+
+  /* ================== Drop (light blue block) ================== */
+  .drop {
+    background: var(--block-blue);
+    border-radius: var(--r-lg);
+    padding: 24px 32px;
+    text-align: center;
+    transition: background-color .2s var(--ease);
+    border: 0;
+  }
+  .drop.drag { background: var(--block-blue-hover); }
+  .drop-inner {
+    max-width: 720px; margin: 0 auto;
+    text-align: center;
+    padding: 20px 0;
+  }
+  .drop h2 {
+    font-family: inherit;
+    font-size: 15px; font-weight: 600; line-height: 1.4; letter-spacing: -0.008em;
+    margin: 0 0 22px; color: var(--ink-2);
+  }
+  .drop p {
+    font-size: 13px; font-weight: 400; line-height: 1.5; letter-spacing: -0.005em;
+    color: var(--ink-dim); margin: 0 0 20px;
+  }
+  .drop-actions { display: inline-flex; gap: 12px; flex-wrap: wrap; justify-content: center; }
+  .drop-note {
+    margin-top: 20px;
+    font-family: inherit; text-transform: none;
+    font-size: 12px; letter-spacing: -0.005em;
+    color: var(--ink-dim);
+  }
+
+  .adv-row {
+    display: flex; align-items: center; justify-content: center;
+    margin-top: 18px;
+  }
+  .adv-toggle {
+    background: transparent; border: 0; cursor: pointer;
+    font-family: inherit; text-transform: none;
+    font-size: 13px; font-weight: 400; letter-spacing: -0.005em;
+    color: var(--ink-dim); opacity: 1;
+    padding: 6px 8px; border-radius: var(--r-full);
+    transition: color .18s var(--ease);
+  }
+  .adv-toggle:hover { color: var(--ink-2); background: transparent; }
+  .adv-toggle .modify { color: #0071e3; margin-left: 4px; }
+  .adv-toggle:hover .modify { color: #0077ed; }
+
+  /* ================== Empty state ================== */
+  .empty {
+    background: var(--surface-soft);
+    border-radius: var(--r-lg);
+    padding: 60px 40px;
+    text-align: center;
+  }
+  .empty-title {
+    font-family: inherit;
+    font-size: 15px; font-weight: 600; letter-spacing: -0.008em;
+    margin: 0 0 6px; color: var(--ink-2);
+  }
+  .empty-sub {
+    font-family: inherit; text-transform: none;
+    font-size: 13px; letter-spacing: -0.005em; font-weight: 400;
+    color: var(--ink-dim);
+  }
+
+  /* ================== Task Card ================== */
+  .task-card {
+    background: var(--canvas);
+    border: 1px solid var(--hairline);
+    border-radius: var(--r-lg);
+    padding: 32px;
+    margin-bottom: 16px;
+    animation: fadeIn .35s var(--ease);
+  }
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translateY(6px); }
+    to { opacity: 1; transform: none; }
+  }
+  .task-header {
+    display: flex; justify-content: space-between; align-items: flex-start;
+    gap: 24px; flex-wrap: wrap; margin-bottom: 20px;
+  }
+  .task-title {
+    font-size: 24px; font-weight: 700; line-height: 1.45; letter-spacing: 0;
+    margin: 0 0 4px;
+  }
+  .task-sub {
+    font-family: "JetBrains Mono", "SF Mono", monospace;
+    text-transform: uppercase;
+    font-size: 12px; letter-spacing: 0.60px; color: var(--ink); opacity: 0.6;
+  }
+  .task-actions { display: flex; gap: 8px; }
+
+  .task-progress {
+    height: 4px; background: var(--hairline); border-radius: var(--r-full);
+    overflow: hidden;
+  }
+  .task-progress-bar {
+    height: 100%; width: 0%; background: var(--primary);
+    border-radius: var(--r-full);
+    transition: width .3s var(--ease), background-color .2s var(--ease);
+  }
+  .task-card[data-status="done"] .task-progress-bar { background: var(--success); }
+
+  .task-stats {
+    display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px;
+    margin-top: 24px;
+  }
+  @media (max-width: 720px) {
+    .task-stats { grid-template-columns: repeat(2, 1fr); }
+  }
+  .stat {
+    padding: 16px;
+    background: var(--surface-soft); border-radius: var(--r-md);
+  }
+  .stat .label {
+    font-family: "JetBrains Mono", "SF Mono", monospace;
+    text-transform: uppercase; font-size: 12px; letter-spacing: 0.60px;
+    opacity: 0.6; margin-bottom: 6px;
+  }
+  .stat .value {
+    font-size: 20px; font-weight: 480; letter-spacing: -0.10px;
+  }
+
+  /* File list (merged summary) */
+  .file-list {
+    margin-top: 24px;
+    border-top: 1px solid var(--hairline-soft);
+    padding-top: 16px;
+  }
+  .file-item {
+    display: flex; align-items: center; gap: 16px;
+    padding: 12px 0;
+    font-size: 16px; font-weight: 330; letter-spacing: -0.14px;
+  }
+  .file-item + .file-item { border-top: 1px solid var(--hairline-soft); }
+  .file-name {
+    flex: 1; min-width: 0;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    color: var(--ink);
+  }
+  .file-status {
+    font-family: "JetBrains Mono", "SF Mono", monospace;
+    text-transform: uppercase; font-size: 12px; letter-spacing: 0.60px;
+    color: var(--ink); opacity: 0.6; white-space: nowrap;
+  }
+  .file-status.done { color: var(--success); opacity: 1; }
+  .file-status.failed { color: var(--accent-magenta); opacity: 1; }
+  .file-status.run { color: var(--ink); opacity: 1; }
+  .file-dl {
+    color: var(--ink); text-decoration: none;
+    font-family: inherit; font-size: 14px; font-weight: 480;
+    padding: 6px 14px; border-radius: var(--r-pill);
+    border: 1px solid var(--hairline);
+    transition: background-color .18s var(--ease);
+  }
+  .file-dl:hover { background: var(--surface-soft); }
+
+  /* Auto tip (banner) */
+  .auto-tip {
+    margin-top: 20px; padding: 16px 24px;
+    background: var(--block-mint);
+    border-radius: var(--r-md);
+    font-size: 16px; font-weight: 330; letter-spacing: -0.14px;
+    color: var(--ink);
+  }
+
+  /* Recent */
+  .recent-grid {
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    gap: 12px;
+  }
+  .recent-card {
+    display: flex; align-items: center; gap: 12px;
+    padding: 14px 16px;
+    background: var(--canvas); border-radius: var(--r-md);
+    border: 1px solid var(--hairline);
+    transition: background-color .18s var(--ease);
+  }
+  .recent-card:hover { background: var(--surface-soft); }
+  .recent-info { flex: 1; min-width: 0; }
+  .recent-name {
+    font-family: inherit;
+    font-size: 13px; font-weight: 500; letter-spacing: -0.005em;
+    color: var(--ink-2);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .recent-meta {
+    font-family: "SF Mono", ui-monospace, Menlo, monospace;
+    text-transform: none;
+    font-size: 11px; letter-spacing: 0; font-weight: 400;
+    color: var(--ink-dim); margin-top: 4px;
+  }
+  .recent-card .rdl {
+    color: var(--ink-2); text-decoration: none;
+    font-family: inherit; font-size: 13px; font-weight: 500;
+    padding: 6px 14px; border-radius: var(--r-pill);
+    border: 1px solid var(--hairline); background: var(--canvas);
+    transition: background-color .18s var(--ease);
+  }
+  .recent-card .rdl:hover { background: var(--surface-soft); }
+
+  /* ================== Sheet ================== */
+  .sheet-backdrop {
+    position: fixed; inset: 0; background: rgba(0,0,0,0.6);
+    opacity: 0; pointer-events: none;
+    transition: opacity .3s var(--ease);
+    z-index: 100;
+  }
+  .sheet-backdrop.show { opacity: 1; pointer-events: auto; }
+  .sheet {
+    position: fixed; left: 50%; bottom: 0;
+    transform: translate(-50%, 100%);
+    width: min(560px, calc(100% - 24px));
+    background: var(--canvas);
+    border-radius: var(--r-lg) var(--r-lg) 0 0;
+    z-index: 101;
+    padding: 24px 32px 32px;
+    max-height: 80vh; overflow: auto;
+    transition: transform .35s var(--ease);
+  }
+  @media (min-width: 640px) {
+    .sheet { bottom: 24px; border-radius: var(--r-lg); }
+  }
+  .sheet.show { transform: translate(-50%, 0); }
+  .sheet-grabber {
+    width: 44px; height: 4px; border-radius: var(--r-full); background: var(--hairline);
+    margin: 0 auto 16px;
+  }
+  .sheet-head {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 24px;
+  }
+  .sheet-title {
+    font-size: 26px; font-weight: 540; letter-spacing: -0.26px;
+  }
+  .sheet-close {
+    background: var(--surface-soft); border: 0;
+    width: 32px; height: 32px; border-radius: var(--r-full);
+    cursor: pointer;
+    display: inline-flex; align-items: center; justify-content: center;
+    font-size: 12px;
+  }
+  .sheet-close:hover { background: var(--hairline); }
+
+  .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+  @media (max-width: 480px) { .form-grid { grid-template-columns: 1fr; } }
+  .field label {
+    display: block;
+    font-family: "JetBrains Mono", "SF Mono", monospace;
+    text-transform: uppercase; font-size: 12px; letter-spacing: 0.60px;
+    margin-bottom: 8px; opacity: 0.7;
+  }
+  .field input, .field select {
+    width: 100%; height: 44px;
+    padding: 12px 14px;
+    background: var(--canvas); color: var(--ink);
+    border: 1px solid var(--hairline);
+    border-radius: var(--r-md);
+    font-family: inherit;
+    font-size: 18px; font-weight: 320; letter-spacing: -0.26px;
+    outline: none;
+    transition: border-color .18s var(--ease);
+  }
+  .field input:focus, .field select:focus { border-color: var(--primary); }
+
+  /* ================== Toast ================== */
+  .status-toast {
+    position: fixed; top: 68px; left: 50%; transform: translate(-50%, -16px);
+    background: var(--primary); color: var(--on-primary);
+    padding: 12px 20px; border-radius: var(--r-pill);
+    display: flex; align-items: center; gap: 12px;
+    opacity: 0; pointer-events: none;
+    transition: opacity .3s var(--ease), transform .3s var(--ease);
+    z-index: 9999;
+    max-width: 480px;
+  }
+  .status-toast.show {
+    opacity: 1; transform: translate(-50%, 0); pointer-events: auto;
+  }
+  .status-toast .title {
+    font-size: 16px; font-weight: 480; letter-spacing: -0.14px;
+  }
+  .status-toast .sub {
+    font-family: "JetBrains Mono", "SF Mono", monospace;
+    font-size: 12px; letter-spacing: 0.60px; text-transform: uppercase;
+    opacity: 0.7;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 240px;
+  }
+  .status-toast .close {
+    background: rgba(255,255,255,0.14); border: 0; color: var(--on-primary);
+    width: 24px; height: 24px; border-radius: var(--r-full);
+    cursor: pointer; font-size: 11px;
+  }
+  .spin {
+    width: 14px; height: 14px; border-radius: 50%;
+    border: 2px solid rgba(255,255,255,0.32); border-top-color: var(--on-primary);
+    animation: spin 0.8s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* Marquee strip under nav */
+  .marquee-strip {
+    background: var(--inverse-canvas); color: var(--inverse-ink);
+    height: 36px; display: flex; align-items: center; justify-content: center;
+    font-family: "JetBrains Mono", "SF Mono", monospace;
+    font-size: 12px; letter-spacing: 0.60px; text-transform: uppercase;
+    padding: 0 24px;
+  }
+
+  @media (max-width: 720px) {
+    .hero { padding: 48px 0 32px; }
+    .hero h1 { font-size: 48px; letter-spacing: -0.96px; }
+    .drop { padding: 32px 20px; }
+    .drop h2 { font-size: 40px; letter-spacing: -0.6px; }
+    .task-card { padding: 24px; }
+    .container { padding: 0 20px 60px; }
+    .nav-inner { padding: 0 20px; }
+  }
+</style>
+</head>
+<body>
+
+  <nav class="nav">
+    <div class="nav-inner">
+      <div class="brand">
+        <span class="brand-mark">M</span>
+        <span class="brand-name">Motion2WebP</span>
+      </div>
+      <div class="nav-actions">
+        <button id="themeToggle" class="icon-btn" title="切换外观" aria-label="切换外观">
+          <svg class="ico-sun" viewBox="0 0 18 18" fill="currentColor" aria-hidden="true"><path d="M9 4.5a4.5 4.5 0 100 9 4.5 4.5 0 000-9zm0-3.4a.7.7 0 01.7.7v1.4a.7.7 0 11-1.4 0V1.8a.7.7 0 01.7-.7zm0 13.5a.7.7 0 01.7.7v1.4a.7.7 0 11-1.4 0V15.3a.7.7 0 01.7-.7zM3.6 9a.7.7 0 01-.7.7H1.5a.7.7 0 110-1.4h1.4a.7.7 0 01.7.7zm13.5 0a.7.7 0 01-.7.7h-1.4a.7.7 0 110-1.4h1.4a.7.7 0 01.7.7zM3.8 3.8a.7.7 0 01.99 0l1 1a.7.7 0 11-1 1l-1-1a.7.7 0 010-1zm8.4 8.4a.7.7 0 01.99 0l1 1a.7.7 0 01-1 1l-1-1a.7.7 0 010-1zm2-8.4a.7.7 0 010 .99l-1 1a.7.7 0 11-1-1l1-1a.7.7 0 011 0zM4.8 12.2a.7.7 0 010 1l-1 1a.7.7 0 11-1-1l1-1a.7.7 0 011 0z"/></svg>
+          <svg class="ico-moon" viewBox="0 0 18 18" fill="currentColor" aria-hidden="true"><path d="M7 2a6 6 0 008.4 8.4A6.6 6.6 0 117 2z"/></svg>
+        </button>
+      </div>
+    </div>
+  </nav>
+
+  <!-- Removed marquee strip per request -->
+
+  <div class="container">
+
+    <!-- Hero -->
+    <section class="hero">
+      <h1>Motion2WebP</h1>
+      <p class="sub">批量转换WebP动图，专为设计周报、竞品分析、开眼周刊打造，无需配置参数，完成后自动下载</p>
+    </section>
+
+    <!-- Drop color-block -->
+    <section id="dropSection">
+      <div id="drop" class="drop">
+        <div class="drop-inner">
+          <h2>一次可拖入多个视频或 ZIP</h2>
+          <div class="drop-actions">
+            <button class="btn primary" id="pickBtn">选择文件 / ZIP</button>
+            <button class="btn secondary" id="rushBtn" title="急速模式：更小体积、更快速度">急速通道</button>
+          </div>
+        </div>
+        <input id="fileInput" type="file" multiple accept="video/*,.mp4,.mov,.m4v,.webm,.mkv,.avi,.gif,.zip" style="display:none" />
+      </div>
+      <div class="adv-row">
+        <button class="adv-toggle" id="advOpen">默认设置 <span class="sep">/</span> <span class="modify">修改</span></button>
+      </div>
+    </section>
+
+    <!-- Recent -->
+    <section class="section" id="recentBlock" style="display:none;">
+      <div class="section-head">
+        <h2>最近</h2>
+        <div style="display:flex; gap:16px;">
+          <button class="section-link" id="toggleRecentBtn" style="display:none;">展开</button>
+          <button class="section-link" id="clearRecentBtn">清除记录</button>
+        </div>
+      </div>
+      <div id="recentList" class="recent-grid"></div>
+    </section>
+
+    <!-- Tasks -->
+    <section class="section" id="tasks">
+      <div class="section-head">
+        <h2>转换 WebP 任务</h2>
+        <button class="section-link" id="clearDoneBtn">清除列表</button>
+      </div>
+      <div id="jobs"></div>
+      <div id="jobsEmpty" class="empty">
+        <div class="empty-title">还没有任务</div>
+        <div class="empty-sub">拖入视频或点击「选择文件 / ZIP」开始</div>
+      </div>
+    </section>
+
+  </div>
+
+  <!-- Sheet: Advanced -->
+  <div id="advBackdrop" class="sheet-backdrop"></div>
+  <div id="advSheet" class="sheet" role="dialog" aria-modal="true">
+    <div class="sheet-grabber"></div>
+    <div class="sheet-head">
+      <span class="sheet-title">默认设置</span>
+      <button class="sheet-close" id="advClose" aria-label="关闭">✕</button>
+    </div>
+    <div class="form-grid">
+      <div class="field">
+        <label>FPS</label>
+        <input id="fps" type="number" value="30" min="1" max="60"/>
+      </div>
+      <div class="field">
+        <label>Quality 0–100</label>
+        <input id="quality" type="number" value="80" min="0" max="100"/>
+      </div>
+      <div class="field">
+        <label>Resize width</label>
+        <input id="resize" type="number" placeholder="保持原尺寸"/>
+      </div>
+      <div class="field">
+        <label>Mode</label>
+        <select id="lossless">
+          <option value="false" selected>Lossy · 体积更小</option>
+          <option value="true">Lossless · 无损</option>
+        </select>
+      </div>
+    </div>
+    <div style="margin-top: 32px; display: flex; justify-content: flex-end; gap: 12px;">
+      <button class="btn secondary" id="advResetBtn">恢复默认</button>
+      <button class="btn primary" id="advDone">完成</button>
+    </div>
+  </div>
+
+  <!-- Toast -->
+  <div id="statusToast" class="status-toast" aria-live="polite">
+    <div class="ico" id="toastIcon"><div class="spin"></div></div>
+    <div class="txt">
+      <div class="title" id="toastTitle">Converting</div>
+      <div class="sub" id="toastSub">-</div>
+    </div>
+    <button class="close" id="toastClose" title="关闭">✕</button>
+  </div>
+
+<script>
+// ============ Theme ============
+(function(){
+  try {
+    const saved = localStorage.getItem('m2w-theme');
+    if (saved === 'light' || saved === 'dark') {
+      document.documentElement.setAttribute('data-theme', saved);
+    }
+  } catch(e){}
+})();
+document.getElementById('themeToggle').addEventListener('click', () => {
+  let cur = document.documentElement.getAttribute('data-theme');
+  if (!cur) {
+    cur = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+  }
+  const next = cur === 'dark' ? 'light' : 'dark';
+  document.documentElement.setAttribute('data-theme', next);
+  try { localStorage.setItem('m2w-theme', next); } catch(e){}
+});
+
+// ============ Elements ============
+const drop = document.getElementById('drop');
+const fileInput = document.getElementById('fileInput');
+const pickBtn = document.getElementById('pickBtn');
+const rushBtn = document.getElementById('rushBtn');
+const jobsEl = document.getElementById('jobs');
+const jobsEmpty = document.getElementById('jobsEmpty');
+const clearDoneBtn = document.getElementById('clearDoneBtn');
+
+// Advanced sheet
+const advSheet = document.getElementById('advSheet');
+const advBackdrop = document.getElementById('advBackdrop');
+document.getElementById('advOpen').addEventListener('click', () => { advSheet.classList.add('show'); advBackdrop.classList.add('show'); });
+function closeSheet(){ advSheet.classList.remove('show'); advBackdrop.classList.remove('show'); }
+document.getElementById('advClose').addEventListener('click', closeSheet);
+document.getElementById('advDone').addEventListener('click', closeSheet);
+advBackdrop.addEventListener('click', closeSheet);
+document.getElementById('advResetBtn').addEventListener('click', () => {
+  document.getElementById('fps').value = 30;
+  document.getElementById('quality').value = 80;
+  document.getElementById('resize').value = '';
+  document.getElementById('lossless').value = 'false';
+});
+
+// Rush mode
+let rushMode = false;
+rushBtn.addEventListener('click', () => {
+  rushMode = !rushMode;
+  rushBtn.textContent = rushMode ? '急速已开启' : '急速通道';
+  rushBtn.classList.toggle('primary', rushMode);
+  rushBtn.classList.toggle('secondary', !rushMode);
+});
+
+// Pick / drag
+pickBtn.addEventListener('click', () => { fileInput.value=''; fileInput.click(); });
+fileInput.addEventListener('change', () => { if (fileInput.files.length) uploadFiles(fileInput.files); });
+['dragenter','dragover'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.add('drag'); }));
+['dragleave','drop'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.remove('drag'); }));
+drop.addEventListener('drop', e => {
+  const files = e.dataTransfer.files;
+  if (files && files.length) uploadFiles(files);
+});
+
+clearDoneBtn.addEventListener('click', () => {
+  document.querySelectorAll('.task-card').forEach(n => n.remove());
+  updateEmpty();
+});
+function updateEmpty(){ jobsEmpty.style.display = jobsEl.children.length ? 'none' : 'block'; }
+updateEmpty();
+
+// ============ Utils ============
+function fmtSize(n){
+  if (!n) return '-';
+  const u = ['B','KB','MB','GB']; let i = 0;
+  while (n >= 1024 && i < u.length-1) { n/=1024; i++; }
+  return n.toFixed(n<10?2:1)+' '+u[i];
+}
+function fmtTime(s){
+  if (!isFinite(s) || s <= 0) return '-';
+  if (s < 1) return '<1s';
+  s = Math.round(s);
+  if (s < 60) return s+'s';
+  const m = Math.floor(s/60), sec = s%60;
+  return m+'m'+(sec?(' '+sec+'s'):'');
+}
+function escapeHtml(s){
+  return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c]);
+}
+
+let _audioCtx = null;
+function playChime(){
+  try {
+    if (!_audioCtx) _audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    const ctx = _audioCtx;
+    if (ctx.state === 'suspended') ctx.resume();
+    const notes = [
+      { freq: 1318.51, start: 0.00, dur: 0.13 },
+      { freq: 1567.98, start: 0.13, dur: 0.13 },
+      { freq: 2093.00, start: 0.26, dur: 0.28 }
+    ];
+    const now = ctx.currentTime;
+    for (const n of notes) {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.value = n.freq;
+      gain.gain.setValueAtTime(0, now + n.start);
+      gain.gain.linearRampToValueAtTime(0.32, now + n.start + 0.01);
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + n.start + n.dur);
+      osc.connect(gain).connect(ctx.destination);
+      osc.start(now + n.start);
+      osc.stop(now + n.start + n.dur + 0.02);
+    }
+  } catch(e){}
+}
+function triggerDownload(url){
+  const a = document.createElement('a');
+  a.href = url; a.download = ''; a.style.display = 'none';
+  document.body.appendChild(a); a.click();
+  setTimeout(() => a.remove(), 1000);
+}
+
+// ============ Upload ============
+let batchCounter = 0;
+async function uploadFiles(files){
+  if (!files || !files.length) return;
+  batchCounter++;
+  const batchNo = batchCounter;
+
+  const form = new FormData();
+  for (const f of files) form.append('files', f);
+  if (rushMode) {
+    form.append('fps', '25');
+    form.append('quality', '70');
+    form.append('lossless', 'false');
+  } else {
+    form.append('fps', document.getElementById('fps').value || '30');
+    form.append('quality', document.getElementById('quality').value || '80');
+    const rz = document.getElementById('resize').value;
+    if (rz) form.append('resize', rz);
+    form.append('lossless', document.getElementById('lossless').value);
+  }
+  const modeLabel = rushMode ? '急速' : '标准';
+
+  const card = createTaskCard(batchNo, files.length, modeLabel);
+  updateEmpty();
+
+  try {
+    const res = await fetch('/api/convert', { method: 'POST', body: form });
+    if (!res.ok) throw new Error('上传失败 HTTP ' + res.status);
+    const data = await res.json();
+    card.dataset.jobId = data.jobId;
+    card.querySelector('.task-title').textContent = `批次 #${batchNo}`;
+    card.querySelector('.task-sub').textContent = `${modeLabel} · ${data.total} 个文件`;
+    startPolling(card, data.jobId);
+  } catch (e) {
+    card.querySelector('.task-title').textContent = `批次 #${batchNo} · 上传失败`;
+    card.querySelector('.task-sub').textContent = e.message;
+    card.dataset.status = 'done';
+  }
+}
+
+function createTaskCard(batchNo, count, modeLabel){
+  const card = document.createElement('div');
+  card.className = 'task-card';
+  card.dataset.status = 'running';
+  card._autoDownloaded = new Set();
+  card._zipDownloaded = false;
+  card._recentTracked = new Set();
+  card.innerHTML = `
+    <div class="task-header">
+      <div>
+        <h3 class="task-title">批次 #${batchNo}</h3>
+        <div class="task-sub">${modeLabel} · ${count} 个文件</div>
+      </div>
+      <div class="task-actions">
+        <button class="btn small secondary dl-all" style="display:none;">下载 ZIP</button>
+        <button class="btn small text remove">移除</button>
+      </div>
+    </div>
+    <div class="task-progress"><div class="task-progress-bar"></div></div>
+    <div class="task-stats">
+      <div class="stat"><div class="label">Done</div><div class="value stat-done">0 / ${count}</div></div>
+      <div class="stat"><div class="label">Current</div><div class="value stat-current">-</div></div>
+      <div class="stat"><div class="label">Elapsed</div><div class="value stat-elapsed">0s</div></div>
+      <div class="stat"><div class="label">Remaining</div><div class="value stat-eta">-</div></div>
+    </div>
+    <div class="file-list"></div>
+  `;
+  jobsEl.prepend(card);
+  card.querySelector('.remove').addEventListener('click', () => { card.remove(); updateEmpty(); });
+  return card;
+}
+
+function startPolling(card, jobId){
+  const dlBtn = card.querySelector('.dl-all');
+  dlBtn.addEventListener('click', () => window.location = `/api/download-all/${jobId}`);
+  const timer = setInterval(async () => {
+    try {
+      const res = await fetch(`/api/status/${jobId}`);
+      if (!res.ok) return;
+      const s = await res.json();
+      renderTask(card, s);
+      if (s.status === 'done' || s.status === 'error') {
+        clearInterval(timer);
+        card.dataset.status = 'done';
+      }
+    } catch(e) {}
+  }, 500);
+}
+
+function renderTask(card, s){
+  card._lastStatus = s;
+  const overall = s.total > 0 ? ((s.done + (s.currentProgress||0)) / s.total) * 100 : 0;
+  card.querySelector('.task-progress-bar').style.width = Math.min(100, overall).toFixed(1) + '%';
+  card.querySelector('.stat-done').textContent = `${s.done} / ${s.total}` + (s.failed ? `（失败 ${s.failed}）` : '');
+  card.querySelector('.stat-current').textContent = s.current || (s.status === 'done' ? '完成' : '-');
+  card.querySelector('.stat-elapsed').textContent = fmtTime(s.elapsed);
+  card.querySelector('.stat-eta').textContent = s.status === 'done' ? '完成' : fmtTime(s.eta);
+
+  const list = card.querySelector('.file-list');
+  list.innerHTML = '';
+  const items = s.items || [];
+  for (const it of items) {
+    const div = document.createElement('div');
+    div.className = 'file-item';
+    let status = '';
+    let right = '';
+    if (it.status === 'done') {
+      if (!card._recentTracked.has(it.outName)) {
+        card._recentTracked.add(it.outName);
+        addRecent({ jobId: s.id, name: it.name, outName: it.outName, size: it.size, ts: Date.now() });
+      }
+      status = `<span class="file-status done">${fmtSize(it.size)}</span>`;
+      right = `<a class="file-dl" href="/api/download/${s.id}/${encodeURIComponent(it.outName)}" download>下载</a>`;
+    } else if (it.status === 'failed') {
+      status = `<span class="file-status failed">失败</span>`;
+    } else if (it.status === 'running') {
+      status = `<span class="file-status run">${((it.progress||0)*100).toFixed(0)}%</span>`;
+    } else {
+      status = `<span class="file-status">等待</span>`;
+    }
+    div.innerHTML = `
+      <div class="file-name">${escapeHtml(it.name)}</div>
+      ${status}
+      ${right}
+    `;
+    list.appendChild(div);
+  }
+
+  // Auto-download
+  if (s.total === 1) {
+    const it = items[0];
+    if (it && it.status === 'done' && !card._autoDownloaded.has(it.outName)) {
+      card._autoDownloaded.add(it.outName);
+      triggerDownload(`/api/download/${s.id}/${encodeURIComponent(it.outName)}`);
+      playChime();
+      showAutoTip(card, `已自动下载：${it.outName}`);
+    }
+  } else if (s.status === 'done' && !card._zipDownloaded) {
+    const successCount = items.filter(i => i.status === 'done').length;
+    if (successCount > 0) {
+      card._zipDownloaded = true;
+      triggerDownload(`/api/download-all/${s.id}`);
+      playChime();
+      showAutoTip(card, `已自动下载：${successCount} 个文件已打包`);
+    }
+  }
+
+  if (s.status === 'done') card.querySelector('.dl-all').style.display = 'inline-flex';
+}
+
+function showAutoTip(card, msg){
+  let tip = card.querySelector('.auto-tip');
+  if (!tip) {
+    tip = document.createElement('div');
+    tip.className = 'auto-tip';
+    card.appendChild(tip);
+  }
+  tip.textContent = '✓ ' + msg;
+}
+
+// ============ Recent ============
+const RECENT_KEY = 'm2w-recent';
+const RECENT_MAX = 12;
+let recentExpanded = false;
+const recentBlock = document.getElementById('recentBlock');
+const recentList = document.getElementById('recentList');
+const toggleRecentBtn = document.getElementById('toggleRecentBtn');
+
+document.getElementById('clearRecentBtn').addEventListener('click', () => {
+  try { localStorage.removeItem(RECENT_KEY); } catch(e){}
+  recentExpanded = false;
+  renderRecent();
+});
+toggleRecentBtn.addEventListener('click', () => {
+  recentExpanded = !recentExpanded;
+  renderRecent();
+});
+function loadRecent(){
+  try { return JSON.parse(localStorage.getItem(RECENT_KEY) || '[]'); } catch(e){ return []; }
+}
+function saveRecent(list){
+  try { localStorage.setItem(RECENT_KEY, JSON.stringify(list.slice(0, RECENT_MAX))); } catch(e){}
+}
+function addRecent(entry){
+  const list = loadRecent();
+  list.unshift(entry);
+  const seen = new Set();
+  const uniq = list.filter(x => {
+    const k = x.jobId + '|' + x.outName;
+    if (seen.has(k)) return false;
+    seen.add(k); return true;
+  });
+  saveRecent(uniq);
+  renderRecent();
+}
+function fmtTs(ts){
+  const d = new Date(ts); const now = new Date();
+  const diff = (now - d) / 1000;
+  if (diff < 60) return '刚刚';
+  if (diff < 3600) return Math.floor(diff/60) + ' 分钟前';
+  if (diff < 86400) return Math.floor(diff/3600) + ' 小时前';
+  const days = Math.floor(diff/86400);
+  if (days < 7) return days + ' 天前';
+  return `${d.getMonth()+1}/${d.getDate()}`;
+}
+function renderRecent(){
+  const list = loadRecent();
+  if (!list.length) { recentBlock.style.display = 'none'; return; }
+  
+  recentBlock.style.display = 'block';
+  recentList.innerHTML = '';
+  
+  if (list.length > 3) {
+    toggleRecentBtn.style.display = 'inline-block';
+    toggleRecentBtn.textContent = recentExpanded ? '收起' : '展开';
+  } else {
+    toggleRecentBtn.style.display = 'none';
+    recentExpanded = false;
+  }
+
+  const displayList = recentExpanded ? list : list.slice(0, 3);
+
+  for (const r of displayList) {
+    const div = document.createElement('div');
+    div.className = 'recent-card';
+    div.innerHTML = `
+      <div class="recent-info">
+        <div class="recent-name" title="${escapeHtml(r.outName)}">${escapeHtml(r.outName)}</div>
+        <div class="recent-meta">${fmtSize(r.size)} · ${fmtTs(r.ts)}</div>
+      </div>
+      <a class="rdl" href="/api/download/${r.jobId}/${encodeURIComponent(r.outName)}" download>下载</a>
+    `;
+    recentList.appendChild(div);
+  }
+}
+renderRecent();
+
+// ============ Toast ============
+const toast = document.getElementById('statusToast');
+const toastIcon = document.getElementById('toastIcon');
+const toastTitle = document.getElementById('toastTitle');
+const toastSub = document.getElementById('toastSub');
+document.getElementById('toastClose').addEventListener('click', () => toast.classList.remove('show'));
+
+let toastHideTimer = null;
+function showToast(state, title, sub){
+  clearTimeout(toastHideTimer);
+  toast.classList.toggle('show', true);
+  toastIcon.innerHTML = state === 'done'
+    ? '<svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor"><path d="M5.6 9.8L3.15 7.35l1.1-1.1L5.6 7.6l4.3-4.3 1.1 1.1z"/></svg>'
+    : '<div class="spin"></div>';
+  toastTitle.textContent = title;
+  toastSub.textContent = sub;
+  if (state === 'done') toastHideTimer = setTimeout(() => toast.classList.remove('show'), 6000);
+}
+function isPageHidden(){ return document.visibilityState === 'hidden' || !document.hasFocus(); }
+function refreshGlobalToast(){
+  if (!isPageHidden()) { toast.classList.remove('show'); return; }
+  const cards = Array.from(jobsEl.children);
+  if (!cards.length) { toast.classList.remove('show'); return; }
+  let totalAll = 0, doneAll = 0, failedAll = 0, running = 0;
+  let currentName = '';
+  let anyRunning = false;
+  for (const c of cards) {
+    const s = c._lastStatus;
+    if (!s) continue;
+    totalAll += s.total || 0; doneAll += s.done || 0; failedAll += s.failed || 0;
+    if (s.status === 'running') { anyRunning = true; running++; if (!currentName && s.current) currentName = s.current; }
+  }
+  if (totalAll === 0) { toast.classList.remove('show'); return; }
+  if (anyRunning) {
+    showToast('running', `Converting · ${doneAll} / ${totalAll}`, currentName || `${running} batches`);
+  } else {
+    showToast('done', `${doneAll - failedAll} files converted`, `Ready to download`);
+  }
+}
+document.addEventListener('visibilitychange', refreshGlobalToast);
+window.addEventListener('blur', refreshGlobalToast);
+window.addEventListener('focus', () => toast.classList.remove('show'));
+setInterval(refreshGlobalToast, 1000);
+</script>
+</body>
+</html>

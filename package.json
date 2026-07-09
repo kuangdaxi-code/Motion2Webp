@@ -1,0 +1,15 @@
+{
+  "name": "motion2webp",
+  "version": "1.0.0",
+  "description": "Motion2WebP - Zero-config batch WebP converter for designers",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "archiver": "^7.0.1",
+    "express": "^4.19.2",
+    "multer": "^1.4.5-lts.1",
+    "unzipper": "^0.12.3"
+  }
+}
