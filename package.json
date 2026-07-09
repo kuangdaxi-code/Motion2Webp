@@ -9,6 +9,8 @@
   "dependencies": {
     "@ffmpeg/core": "^0.12.6",
     "@ffmpeg/core-mt": "^0.12.6",
+    "@ffmpeg/ffmpeg": "^0.12.10",
+    "@ffmpeg/util": "^0.12.1",
     "archiver": "^7.0.1",
     "express": "^4.19.2",
     "multer": "^1.4.5-lts.1",

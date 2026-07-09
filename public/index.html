@@ -711,8 +711,8 @@ document.getElementById('themeToggle').addEventListener('click', () => {
 });
 
 // ============ ffmpeg.wasm (browser-side) ============
-import { FFmpeg } from 'https://esm.sh/@ffmpeg/ffmpeg@0.12.10';
-import { fetchFile, toBlobURL } from 'https://esm.sh/@ffmpeg/util@0.12.1';
+import { FFmpeg } from '/vendor/ffmpeg/index.js';
+import { fetchFile, toBlobURL } from '/vendor/util/index.js';
 
 const CORE_BASE = '/vendor/ffmpeg-core';
 let _ffmpeg = null;
